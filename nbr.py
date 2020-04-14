@@ -31,7 +31,7 @@ def download(url, filename, api_s):
 api = SentinelAPI('bartulo', 'ventanuco')
 footprint = geojson_to_wkt(read_geojson('prueba.geojson'))
 products = api.query( footprint, 
-                      date = ( date.today() - timedelta(10), date.today() + timedelta(1)),
+                      date = ( date.today() - timedelta(20), date.today() + timedelta(1)),
                       producttype = 'S2MSI2A',
                       platformname = 'Sentinel-2')
 
@@ -60,14 +60,15 @@ print("%s/Nodes('%s')/Nodes('GRANULE')/Nodes('%s')/Nodes('IMG_DATA')/Nodes('R20m
 bands_10m = api_session.get("%s/Nodes('%s')/Nodes('GRANULE')/Nodes('%s')/Nodes('IMG_DATA')/Nodes('R10m')/Nodes?$format=json" % (baseURL, filename, granules_id)).json()
 band8 = bands_10m['d']['results'][4]['__metadata']['media_src']
 bandColor = bands_10m['d']['results'][5]['__metadata']['media_src']
+print(bandColor)
 
 bands_20m = api_session.get("%s/Nodes('%s')/Nodes('GRANULE')/Nodes('%s')/Nodes('IMG_DATA')/Nodes('R20m')/Nodes?$format=json" % (baseURL, filename, granules_id)).json()
 band12 = bands_20m['d']['results'][8]['__metadata']['media_src']
 print(band12)
 
-download(band12, 'banda12.jp2', api_session)
-download(band8, 'banda8.jp2', api_session)
-download(bandColor, 'color.jp2', api_session)
+#download(band12, 'banda12.jp2', api_session)
+#download(band8, 'banda8.jp2', api_session)
+#download(bandColor, 'color.jp2', api_session)
 
 banda8 = gdal.Open('banda8.jp2')
 banda12 = gdal.Open('banda12.jp2')
@@ -78,17 +79,11 @@ b12 = banda12.ReadAsArray()
 dim = b8.shape
 factor = b8.shape[0] / b12.shape[0]
 
-img = np.empty((dim[0], dim[1]), np.float32)
-
-for i in range(dim[0]):
-    print(i)
-    for n in range(dim[1]):
-        b8Value = float(b8[i][n])
-        b12Value = float(b12[int(i/factor)][int(n/factor)])
-        if b8Value + b12Value != 0:
-            img[i][n] = (b8Value - b12Value) / (b8Value + b12Value)
-        else: 
-            img[i][n] = 1
+b8 = b8.astype('int32')
+b12g = np.repeat(np.repeat(b12, 2, axis = 0), 2, axis=1)
+b12 = b12g.astype('int32')
+nbr = (b8 - b12) / (b8 + b12)
+nbr = nbr.astype('float32')
 
 driver = gdal.GetDriverByName('GTiff')
 dst = driver.Create('prueba.tiff', xsize = dim[0], ysize = dim[1], bands = 1, eType = gdal.GDT_Float32)
@@ -96,5 +91,5 @@ dst = driver.Create('prueba.tiff', xsize = dim[0], ysize = dim[1], bands = 1, eT
 dst.SetGeoTransform(banda8.GetGeoTransform())
 dst.SetProjection(banda8.GetProjection())
 
-dst.GetRasterBand(1).WriteArray(img)
+dst.GetRasterBand(1).WriteArray(nbr)
 dst = None
